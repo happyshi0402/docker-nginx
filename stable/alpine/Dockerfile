@@ -1,12 +1,15 @@
-FROM alpine:3.9
+FROM alpine:3.10
 
 LABEL maintainer="NGINX Docker Maintainers <docker-maint@nginx.com>"
 
 ENV NGINX_VERSION 1.16.0
-ENV NJS_VERSION   0.3.1
-ENV PKG_RELEASE 1
+ENV NJS_VERSION   0.3.2
+ENV PKG_RELEASE   1
 
 RUN set -x \
+# create nginx user/group first, to be consistent throughout docker variants
+    && addgroup -g 101 -S nginx \
+    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
     && apkArch="$(cat /etc/apk/arch)" \
     && nginxPackages=" \
         nginx=${NGINX_VERSION}-r${PKG_RELEASE} \
@@ -21,17 +24,17 @@ RUN set -x \
             set -x \
             && KEY_SHA512="e7fa8303923d9b95db37a77ad46c68fd4755ff935d0a534d26eba83de193c76166c68bfe7f65471bf8881004ef4aa6df3e34689c305662750c0172fca5d8552a *stdin" \
             && apk add --no-cache --virtual .cert-deps \
-                openssl curl ca-certificates \
-            && curl -o /tmp/nginx_signing.rsa.pub https://nginx.org/keys/nginx_signing.rsa.pub \
+                openssl \
+            && wget -O /tmp/nginx_signing.rsa.pub https://nginx.org/keys/nginx_signing.rsa.pub \
             && if [ "$(openssl rsa -pubin -in /tmp/nginx_signing.rsa.pub -text -noout | openssl sha512 -r)" = "$KEY_SHA512" ]; then \
-                 echo "key verification succeeded!"; \
-                 mv /tmp/nginx_signing.rsa.pub /etc/apk/keys/; \
-               else \
-                 echo "key verification failed!"; \
-                 exit 1; \
-               fi \
+                echo "key verification succeeded!"; \
+                mv /tmp/nginx_signing.rsa.pub /etc/apk/keys/; \
+            else \
+                echo "key verification failed!"; \
+                exit 1; \
+            fi \
             && printf "%s%s%s\n" \
-                "http://nginx.org/packages/alpine/v" \
+                "https://nginx.org/packages/alpine/v" \
                 `egrep -o '^[0-9]+\.[0-9]+' /etc/alpine-release` \
                 "/main" \
             | tee -a /etc/apk/repositories \
@@ -60,12 +63,12 @@ RUN set -x \
                 bash \
                 alpine-sdk \
                 findutils \
-            && su - nobody -s /bin/sh -c " \
+            && su nobody -s /bin/sh -c " \
                 export HOME=${tempDir} \
                 && cd ${tempDir} \
                 && hg clone https://hg.nginx.org/pkg-oss \
                 && cd pkg-oss \
-                && hg up ${NGINX_VERSION}-${PKG_RELEASE} \
+                && hg up -r 417 \
                 && cd alpine \
                 && make all \
                 && apk index -o ${tempDir}/packages/alpine/${apkArch}/APKINDEX.tar.gz ${tempDir}/packages/alpine/${apkArch}/*.apk \
